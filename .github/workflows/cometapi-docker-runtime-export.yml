@@ -13,7 +13,7 @@ permissions:
 jobs:
   export-runtime:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 45
     steps:
       - name: Capture runner and Docker versions
         run: |
@@ -43,7 +43,25 @@ jobs:
           find "$ROOT" -type f -print0 | sort -z | xargs -0 sha256sum > "$ROOT/meta/sha256sums.txt"
           tar -C "$RUNNER_TEMP" -czf "$RUNNER_TEMP/docker-runtime-ubuntu24-amd64.tar.gz" docker-runtime
           sha256sum "$RUNNER_TEMP/docker-runtime-ubuntu24-amd64.tar.gz" > "$RUNNER_TEMP/docker-runtime-ubuntu24-amd64.tar.gz.sha256"
-          ls -lh "$RUNNER_TEMP/docker-runtime-ubuntu24-amd64.tar.gz"
+
+      - name: Export exact pinned container images
+        run: |
+          set -euxo pipefail
+          IMAGES=(
+            busybox:1.37.0
+            python:3.12-slim
+            shopify/toxiproxy:2.12.0
+            grafana/k6:2.1.0
+            prom/prometheus:v3.13.0
+            grafana/grafana:13.1.0
+            otel/opentelemetry-collector-contrib:0.157.0
+          )
+          printf '%s\n' "${IMAGES[@]}" > "$RUNNER_TEMP/images.txt"
+          for image in "${IMAGES[@]}"; do docker pull "$image"; done
+          docker image inspect "${IMAGES[@]}" > "$RUNNER_TEMP/image-inspect.json"
+          docker save "${IMAGES[@]}" | zstd -T0 -10 -o "$RUNNER_TEMP/cometapi-pinned-images.tar.zst"
+          sha256sum "$RUNNER_TEMP/cometapi-pinned-images.tar.zst" > "$RUNNER_TEMP/cometapi-pinned-images.tar.zst.sha256"
+          ls -lh "$RUNNER_TEMP/cometapi-pinned-images.tar.zst"
 
       - name: Upload Docker runtime artifact
         uses: actions/upload-artifact@v4
@@ -52,5 +70,17 @@ jobs:
           path: |
             ${{ runner.temp }}/docker-runtime-ubuntu24-amd64.tar.gz
             ${{ runner.temp }}/docker-runtime-ubuntu24-amd64.tar.gz.sha256
+          retention-days: 1
+          compression-level: 0
+
+      - name: Upload pinned images artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cometapi-pinned-images
+          path: |
+            ${{ runner.temp }}/cometapi-pinned-images.tar.zst
+            ${{ runner.temp }}/cometapi-pinned-images.tar.zst.sha256
+            ${{ runner.temp }}/images.txt
+            ${{ runner.temp }}/image-inspect.json
           retention-days: 1
           compression-level: 0
