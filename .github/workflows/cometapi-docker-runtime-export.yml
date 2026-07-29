@@ -1,0 +1,54 @@
+name: Temporary CometAPI Docker Runtime Export
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  export-runtime:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Capture runner and Docker versions
+        run: |
+          set -euxo pipefail
+          uname -a
+          docker version
+          docker compose version
+          containerd --version
+          runc --version
+
+      - name: Package Docker runtime
+        run: |
+          set -euxo pipefail
+          ROOT="$RUNNER_TEMP/docker-runtime"
+          mkdir -p "$ROOT/bin" "$ROOT/libexec/docker/cli-plugins" "$ROOT/meta"
+          copy_bin() { local name="$1" src; src="$(command -v "$name" 2>/dev/null || true)"; [ -z "$src" ] || cp -L "$src" "$ROOT/bin/$name"; }
+          for binary in docker dockerd containerd containerd-shim containerd-shim-runc-v2 ctr runc docker-proxy rootlesskit rootlesskit-docker-proxy slirp4netns fuse-overlayfs iptables iptables-legacy ip6tables ip6tables-legacy nft; do copy_bin "$binary"; done
+          compose_path="$(find /usr/libexec/docker/cli-plugins /usr/local/lib/docker/cli-plugins /usr/lib/docker/cli-plugins -type f -name docker-compose 2>/dev/null | head -1 || true)"
+          test -n "$compose_path"
+          cp -L "$compose_path" "$ROOT/libexec/docker/cli-plugins/docker-compose"
+          docker version > "$ROOT/meta/docker-version.txt"
+          docker compose version > "$ROOT/meta/compose-version.txt"
+          containerd --version > "$ROOT/meta/containerd-version.txt"
+          runc --version > "$ROOT/meta/runc-version.txt"
+          ldd "$ROOT/bin/dockerd" > "$ROOT/meta/dockerd-ldd.txt" || true
+          ldd "$ROOT/bin/docker" > "$ROOT/meta/docker-ldd.txt" || true
+          find "$ROOT" -type f -print0 | sort -z | xargs -0 sha256sum > "$ROOT/meta/sha256sums.txt"
+          tar -C "$RUNNER_TEMP" -czf "$RUNNER_TEMP/docker-runtime-ubuntu24-amd64.tar.gz" docker-runtime
+          sha256sum "$RUNNER_TEMP/docker-runtime-ubuntu24-amd64.tar.gz" > "$RUNNER_TEMP/docker-runtime-ubuntu24-amd64.tar.gz.sha256"
+          ls -lh "$RUNNER_TEMP/docker-runtime-ubuntu24-amd64.tar.gz"
+
+      - name: Upload Docker runtime artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-runtime-ubuntu24-amd64
+          path: |
+            ${{ runner.temp }}/docker-runtime-ubuntu24-amd64.tar.gz
+            ${{ runner.temp }}/docker-runtime-ubuntu24-amd64.tar.gz.sha256
+          retention-days: 1
+          compression-level: 0
