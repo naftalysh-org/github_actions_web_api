@@ -3,6 +3,8 @@ name: Temporary CometAPI Docker Runtime Export
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
