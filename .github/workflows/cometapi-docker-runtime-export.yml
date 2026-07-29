@@ -61,7 +61,12 @@ jobs:
           docker image inspect "${IMAGES[@]}" > "$RUNNER_TEMP/image-inspect.json"
           docker save "${IMAGES[@]}" | zstd -T0 -10 -o "$RUNNER_TEMP/cometapi-pinned-images.tar.zst"
           sha256sum "$RUNNER_TEMP/cometapi-pinned-images.tar.zst" > "$RUNNER_TEMP/cometapi-pinned-images.tar.zst.sha256"
-          ls -lh "$RUNNER_TEMP/cometapi-pinned-images.tar.zst"
+          split -b 240M -d -a 2 "$RUNNER_TEMP/cometapi-pinned-images.tar.zst" "$RUNNER_TEMP/cometapi-pinned-images.part-"
+          sha256sum "$RUNNER_TEMP"/cometapi-pinned-images.part-* > "$RUNNER_TEMP/cometapi-pinned-images.parts.sha256"
+          ls -lh "$RUNNER_TEMP"/cometapi-pinned-images.part-*
+          test -f "$RUNNER_TEMP/cometapi-pinned-images.part-00"
+          test -f "$RUNNER_TEMP/cometapi-pinned-images.part-01"
+          test -f "$RUNNER_TEMP/cometapi-pinned-images.part-02"
 
       - name: Upload Docker runtime artifact
         uses: actions/upload-artifact@v4
@@ -73,13 +78,37 @@ jobs:
           retention-days: 1
           compression-level: 0
 
-      - name: Upload pinned images artifact
+      - name: Upload image part 00
         uses: actions/upload-artifact@v4
         with:
-          name: cometapi-pinned-images
+          name: cometapi-pinned-images-part-00
+          path: ${{ runner.temp }}/cometapi-pinned-images.part-00
+          retention-days: 1
+          compression-level: 0
+
+      - name: Upload image part 01
+        uses: actions/upload-artifact@v4
+        with:
+          name: cometapi-pinned-images-part-01
+          path: ${{ runner.temp }}/cometapi-pinned-images.part-01
+          retention-days: 1
+          compression-level: 0
+
+      - name: Upload image part 02
+        uses: actions/upload-artifact@v4
+        with:
+          name: cometapi-pinned-images-part-02
+          path: ${{ runner.temp }}/cometapi-pinned-images.part-02
+          retention-days: 1
+          compression-level: 0
+
+      - name: Upload image metadata
+        uses: actions/upload-artifact@v4
+        with:
+          name: cometapi-pinned-images-metadata
           path: |
-            ${{ runner.temp }}/cometapi-pinned-images.tar.zst
             ${{ runner.temp }}/cometapi-pinned-images.tar.zst.sha256
+            ${{ runner.temp }}/cometapi-pinned-images.parts.sha256
             ${{ runner.temp }}/images.txt
             ${{ runner.temp }}/image-inspect.json
           retention-days: 1
